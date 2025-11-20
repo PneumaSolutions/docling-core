@@ -508,9 +508,10 @@ class HTMLTableSerializer(BaseTableSerializer):
                     if colspan > 1:
                         opening_tag += f' colspan="{colspan}"'
 
-                    if params.include_prov and cell.bbox:
+                    if params.include_prov and cell.bbox and len(item.prov) == 1:
                         import json
-                        opening_tag += f" data-docling-bbox=\"{html.escape(json.dumps(cell.bbox.model_dump()))}\""
+                        cell_prov = [{"page_no": item.prov[0].page_no, "bbox": cell.bbox.model_dump(), "charspan": (0, 0)}]
+                        opening_tag += f" data-docling-prov=\"{html.escape(json.dumps(cell_prov))}\""
 
                     text_dir = get_text_direction(content)
                     if text_dir == "rtl":
@@ -524,7 +525,7 @@ class HTMLTableSerializer(BaseTableSerializer):
                 res_parts.append(create_ser_result(text=body, span_source=span_source))
 
         text_table = "".join([r.text for r in res_parts])
-        text_table = f"<table{_doc_item_attrs_str(item, params)}>{text_table}</table>" if text_table else ""
+        text_table = f"<table>{text_table}</table>" if text_table else ""
 
         ftn_res = doc_serializer.serialize_footnotes(item=item, **kwargs)
         if ftn_res.text:
