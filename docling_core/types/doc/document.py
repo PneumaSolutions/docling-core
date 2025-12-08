@@ -6456,7 +6456,7 @@ class DoclingDocument(BaseModel):
             html_lang=html_lang,
             output_style=output_style,
             include_annotations=include_annotations,
-            include_docling_attrs=include_attrs,
+            include_docling_attrs=include_docling_attrs,
         )
 
         if html_head == "null":
