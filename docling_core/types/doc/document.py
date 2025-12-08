@@ -4287,7 +4287,7 @@ class DoclingDocument(BaseModel):
         include_annotations: bool = True,
         image_dir: str | Path | None = None,
         image_uri_prefix: str | None = None,
-        include_prov: bool = False,
+        include_docling_attrs: bool = False,
     ) -> str:
         r"""Serialize to HTML."""
         from docling_core.transforms.serializer.html import (
@@ -4316,7 +4316,7 @@ class DoclingDocument(BaseModel):
             html_lang=html_lang,
             output_style=output_style,
             include_annotations=include_annotations,
-            include_prov=include_prov,
+            include_docling_attrs=include_attrs,
         )
 
         if html_head == "null":
