@@ -131,15 +131,17 @@ class HTMLParams(CommonParams):
         deprecated="Use include_meta instead.",
     )
 
-    include_prov: bool = False
+    include_docling_attrs: bool = False
 
     show_original_list_item_marker: bool = True
 
 
 def _doc_item_attrs(item: DocItem, params: HTMLParams) -> dict:
     result = {}
-    if params.include_prov:
+    if params.include_docling_attrs:
         import json
+        result["data-docling-layer"] = item.content_layer
+        result["data-docling-label"] = item.label
         result["data-docling-prov"] = json.dumps([prov.model_dump() for prov in item.prov])
     return result
 
@@ -200,7 +202,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
                 doc=doc,
                 image_mode=params.image_mode,
                 formula_to_mathml=params.formula_to_mathml,
-                include_prov=params.include_prov,
+                include_docling_attrs=params.include_docling_attrs,
                 is_inline_scope=is_inline_scope,
             )
 
@@ -303,12 +305,12 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
         doc: DoclingDocument,
         image_mode: ImageRefMode,
         formula_to_mathml: bool,
-        include_prov: bool,
+        include_docling_attrs: bool,
         is_inline_scope: bool,
     ) -> str:
         """Process a formula item to HTML/MathML."""
         # If formula is empty, try to use an image fallback
-        params = HTMLParams(include_prov=include_prov)
+        params = HTMLParams(include_docling_attrs=include_docling_attrs)
         if (
             text == ""
             and orig != ""
@@ -316,7 +318,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
             and image_mode == ImageRefMode.EMBEDDED
             and (
                 img_fallback := self._get_formula_image_fallback(
-                    item=item, orig=orig, doc=doc, include_prov=include_prov
+                    item=item, orig=orig, doc=doc, include_docling_attrs=include_docling_attrs
                 )
             )
         ):
@@ -340,7 +342,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
 
             except Exception:
                 img_fallback = self._get_formula_image_fallback(
-                    item=item, orig=orig, doc=doc, include_prov=include_prov
+                    item=item, orig=orig, doc=doc, include_docling_attrs=include_docling_attrs
                 )
                 if image_mode == ImageRefMode.EMBEDDED and len(item.prov) > 0 and img_fallback:
                     return img_fallback
@@ -362,10 +364,10 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
         return '<div class="formula-not-decoded">Formula not decoded</div>'
 
     def _get_formula_image_fallback(
-        self, *, item: DocItem, orig: str, doc: DoclingDocument, include_prov: bool
+        self, *, item: DocItem, orig: str, doc: DoclingDocument, include_docling_attrs: bool
     ) -> Optional[str]:
         """Try to get an image fallback for a formula."""
-        params = HTMLParams(include_prov=include_prov)
+        params = HTMLParams(include_docling_attrs=include_docling_attrs)
         item_image = item.get_image(doc=doc)
         if item_image is not None:
             img_ref = ImageRef.from_pil(item_image, dpi=72)
@@ -467,7 +469,7 @@ class HTMLTableSerializer(BaseTableSerializer):
                     if colspan > 1:
                         opening_tag += f' colspan="{colspan}"'
 
-                    if params.include_prov and cell.bbox and len(item.prov) == 1:
+                    if params.include_docling_attrs and cell.bbox and len(item.prov) == 1:
                         import json
                         cell_prov = [{"page_no": item.prov[0].page_no, "bbox": cell.bbox.model_dump(), "charspan": (0, 0)}]
                         opening_tag += f" data-docling-prov=\"{html.escape(json.dumps(cell_prov))}\""
