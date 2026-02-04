@@ -6427,6 +6427,7 @@ class DoclingDocument(BaseModel):
         included_content_layers: Optional[set[ContentLayer]] = None,
         split_page_view: bool = False,
         include_annotations: bool = True,
+        include_prov: bool = False,
     ) -> str:
         r"""Serialize to HTML."""
         from docling_core.transforms.serializer.html import (
@@ -6455,6 +6456,7 @@ class DoclingDocument(BaseModel):
             html_lang=html_lang,
             output_style=output_style,
             include_annotations=include_annotations,
+            include_prov=include_prov,
         )
 
         if html_head == "null":

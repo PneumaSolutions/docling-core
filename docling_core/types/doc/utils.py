@@ -61,7 +61,10 @@ def get_html_tag_with_text_direction(html_tag: str, text: str, attrs: Optional[d
     pieces: list[str] = [html_tag]
     if my_attrs:
         attrs_str = " ".join(
-            [f'{html.escape(k, quote=False)}="{html.escape(my_attrs[k], quote=False)}"' for k in my_attrs]
+            [
+                f'{html.escape(k)}="{html.escape(my_attrs[k])}"'
+                for k in my_attrs
+            ]
         )
         pieces.append(attrs_str)
     return f"<{' '.join(pieces)}>{text}</{html_tag}>"

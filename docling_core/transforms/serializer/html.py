@@ -131,7 +131,22 @@ class HTMLParams(CommonParams):
         deprecated="Use include_meta instead.",
     )
 
+    include_prov: bool = False
+
     show_original_list_item_marker: bool = True
+
+
+def _doc_item_attrs(item: DocItem, params: HTMLParams) -> dict:
+    result = {}
+    if params.include_prov:
+        import json
+        result["data-docling-prov"] = json.dumps([prov.model_dump() for prov in item.prov])
+    return result
+
+
+def _doc_item_attrs_str(item: DocItem, params: HTMLParams) -> str:
+    attrs = _doc_item_attrs(item, params)
+    return "".join([f" {html.escape(k)}=\"{html.escape(v)}\"" for k, v in attrs.items()])
 
 
 class HTMLTextSerializer(BaseModel, BaseTextSerializer):
@@ -169,9 +184,13 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
                 text = text.replace("\n", "<br>")
 
         # Prepare the HTML based on item type
-        if isinstance(item, TitleItem | SectionHeaderItem):
-            section_level = min(item.level + 1, 6) if isinstance(item, SectionHeaderItem) else 1
-            text = get_html_tag_with_text_direction(html_tag=f"h{section_level}", text=text)
+        if isinstance(item, (TitleItem, SectionHeaderItem)):
+            section_level = (
+                min(item.level + 1, 6) if isinstance(item, SectionHeaderItem) else 1
+            )
+            text = get_html_tag_with_text_direction(
+                html_tag=f"h{section_level}", text=text, attrs=_doc_item_attrs(item, params)
+            )
 
         elif isinstance(item, FormulaItem):
             text = self._process_formula(
@@ -181,11 +200,16 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
                 doc=doc,
                 image_mode=params.image_mode,
                 formula_to_mathml=params.formula_to_mathml,
+                include_prov=params.include_prov,
                 is_inline_scope=is_inline_scope,
             )
 
         elif isinstance(item, CodeItem):
-            text = f"<code>{text}</code>" if is_inline_scope else f"<pre><code>{text}</code></pre>"
+            text = (
+                f"<code{_doc_item_attrs_str(item, params)}>{text}</code>"
+                if is_inline_scope
+                else f"<pre{_doc_item_attrs_str(item, params)}><code>{text}</code></pre>"
+            )
 
         elif isinstance(item, ListItem):
             # List items are handled by list serializer
@@ -214,15 +238,17 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
             text = "\n".join(text_parts)
             if nested_parts:
                 text = f"\n{text}\n"
+            attrs = (
+                {"style": f"list-style-type: '{item.marker} ';"}
+                if params.show_original_list_item_marker and item.marker
+                else {}
+            )
+            attrs.update(_doc_item_attrs(item, params))
             text = (
                 get_html_tag_with_text_direction(
                     html_tag="li",
                     text=text,
-                    attrs=(
-                        {"style": f"list-style-type: '{item.marker} ';"}
-                        if params.show_original_list_item_marker and item.marker
-                        else {}
-                    ),
+                    attrs=attrs,
                 )
                 if text
                 else ""
@@ -230,7 +256,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
 
         elif not is_inline_scope:
             # Regular text item
-            text = get_html_tag_with_text_direction(html_tag="p", text=text)
+            text = get_html_tag_with_text_direction(html_tag="p", text=text, attrs=_doc_item_attrs(item, params))
 
         # Apply formatting and hyperlinks to the parent's own text+tag.
         if not post_processed:
@@ -277,16 +303,22 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
         doc: DoclingDocument,
         image_mode: ImageRefMode,
         formula_to_mathml: bool,
+        include_prov: bool,
         is_inline_scope: bool,
     ) -> str:
         """Process a formula item to HTML/MathML."""
         # If formula is empty, try to use an image fallback
+        params = HTMLParams(include_prov=include_prov)
         if (
             text == ""
             and orig != ""
             and len(item.prov) > 0
             and image_mode == ImageRefMode.EMBEDDED
-            and (img_fallback := self._get_formula_image_fallback(item=item, orig=orig, doc=doc))
+            and (
+                img_fallback := self._get_formula_image_fallback(
+                    item=item, orig=orig, doc=doc, include_prov=include_prov
+                )
+            )
         ):
             return img_fallback
 
@@ -302,16 +334,18 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
 
                 # Don't wrap in div for inline formulas
                 if is_inline_scope:
-                    return mathml
+                    return f"<span{_doc_item_attrs_str(item, params)}>{mathml}</span>"
                 else:
-                    return f"<div>{mathml}</div>"
+                    return f"<div{_doc_item_attrs_str(item, params)}>{mathml}</div>"
 
             except Exception:
-                img_fallback = self._get_formula_image_fallback(item=item, orig=orig, doc=doc)
+                img_fallback = self._get_formula_image_fallback(
+                    item=item, orig=orig, doc=doc, include_prov=include_prov
+                )
                 if image_mode == ImageRefMode.EMBEDDED and len(item.prov) > 0 and img_fallback:
                     return img_fallback
                 elif text:
-                    return f"<pre>{text}</pre>"
+                    return f"<pre{_doc_item_attrs_str(item, params)}>{text}</pre>"
                 else:
                     return "<pre>Formula not decoded</pre>"
 
@@ -319,20 +353,23 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
 
         # Fallback options if we got here
         if text and is_inline_scope:
-            return f"<code>{text}</code>"
+            return f"<code{_doc_item_attrs_str(item, params)}>{text}</code>"
         elif text and (not is_inline_scope):
-            f"<pre>{text}</pre>"
+            f"<pre{_doc_item_attrs_str(item, params)}>{text}</pre>"
         elif is_inline_scope:
             return '<span class="formula-not-decoded">Formula not decoded</span>'
 
         return '<div class="formula-not-decoded">Formula not decoded</div>'
 
-    def _get_formula_image_fallback(self, *, item: DocItem, orig: str, doc: DoclingDocument) -> Optional[str]:
+    def _get_formula_image_fallback(
+        self, *, item: DocItem, orig: str, doc: DoclingDocument, include_prov: bool
+    ) -> Optional[str]:
         """Try to get an image fallback for a formula."""
+        params = HTMLParams(include_prov=include_prov)
         item_image = item.get_image(doc=doc)
         if item_image is not None:
             img_ref = ImageRef.from_pil(item_image, dpi=72)
-            return f'<figure><img src="{img_ref.uri}" alt="{orig}" /></figure>'
+            return "<figure>" f'<img{_doc_item_attrs_str(item, params)} src="{img_ref.uri}" alt="{orig}" />' "</figure>"
         return None
 
 
@@ -385,6 +422,7 @@ class HTMLTableSerializer(BaseTableSerializer):
         **kwargs: Any,
     ) -> SerializationResult:
         """Serializes the passed table item to HTML."""
+        params = HTMLParams(**kwargs)
         res_parts: list[SerializationResult] = []
         cap_res = doc_serializer.serialize_captions(item=item, tag="caption", **kwargs)
         if cap_res.text:
@@ -429,6 +467,10 @@ class HTMLTableSerializer(BaseTableSerializer):
                     if colspan > 1:
                         opening_tag += f' colspan="{colspan}"'
 
+                    if params.include_prov and cell.bbox:
+                        import json
+                        opening_tag += f" data-docling-bbox=\"{html.escape(json.dumps(cell.bbox.model_dump()))}\""
+
                     text_dir = get_text_direction(content)
                     if text_dir == "rtl":
                         opening_tag += f' dir="{text_dir}"'
@@ -441,7 +483,7 @@ class HTMLTableSerializer(BaseTableSerializer):
                 res_parts.append(create_ser_result(text=body, span_source=span_source))
 
         text_res = "".join([r.text for r in res_parts])
-        text_res = f"<table>{text_res}</table>" if text_res else ""
+        text_res = f"<table{_doc_item_attrs_str(item, params)}>{text_res}</table>" if text_res else ""
 
         return create_ser_result(text=text_res, span_source=res_parts)
 
@@ -579,7 +621,7 @@ class HTMLPictureSerializer(BasePictureSerializer):
                     and isinstance(item.image.uri, AnyUrl)
                     and item.image.uri.scheme == "data"
                 ):
-                    img_text = f'<img src="{item.image.uri}">'
+                    img_text = f'<img{_doc_item_attrs_str(item, params)} src="{item.image.uri}">'
                 elif len(item.prov) > 1:  # more than 1 provenance
                     img_text = '<table style="border-collapse: collapse; width: 100%;">\n'
                     for ind, prov in enumerate(item.prov):
@@ -599,7 +641,7 @@ class HTMLPictureSerializer(BasePictureSerializer):
 
                     if img is not None:
                         imgb64 = item._image_to_base64(img)
-                        img_text = f'<img src="data:image/png;base64,{imgb64}">'
+                        img_text = f'<img{_doc_item_attrs_str(item, params)} src="data:image/png;base64,{imgb64}">'
                     else:
                         _logger.warning("Could not get image")
 
@@ -607,7 +649,7 @@ class HTMLPictureSerializer(BasePictureSerializer):
                 if isinstance(item.image, ImageRef) and not (
                     isinstance(item.image.uri, AnyUrl) and item.image.uri.scheme == "data"
                 ):
-                    img_text = f'<img src="{quote(str(item.image.uri))}">'
+                    img_text = f'<img{_doc_item_attrs_str(item, params)} src="{quote(str(item.image.uri))}">'
 
         if img_text:
             res_parts.append(create_ser_result(text=img_text, span_source=item))
@@ -1254,7 +1296,11 @@ class HTMLDocSerializer(DocSerializer):
                     text_dir = get_text_direction(text_cap)
                     dir_str = f' dir="{text_dir}"' if text_dir == "rtl" else ""
                     cap_ser_res = create_ser_result(
-                        text=(f'<div class="caption"{dir_str}>{html.escape(text_cap)}</div>'),
+                        text=(
+                            f'<div class="caption"{dir_str}{_doc_item_attrs_str(it, params)}>'
+                            f"{html.escape(text_cap)}"
+                            f"</div>"
+                        ),
                         span_source=it,
                     )
                     results.append(cap_ser_res)
