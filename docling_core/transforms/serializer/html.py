@@ -192,8 +192,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
             text = item.text
             if not isinstance(item, FormulaItem):
                 text = html.escape(text, quote=False)
-                if not isinstance(item, CodeItem):
-                    text = text.replace("\n", "<br>")
+                text = text.replace("\n", "<br>")
             if not isinstance(item, CodeItem | FormulaItem | ListItem):
                 text = doc_serializer.post_process(text=text, formatting=item.formatting, hyperlink=item.hyperlink)
                 post_processed = True
@@ -224,7 +223,7 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
             text = (
                 f"<code{_doc_item_attrs_str(item, params)}>{text}</code>"
                 if is_inline_scope
-                else f"<pre{_doc_item_attrs_str(item, params)}><code>{text}</code></pre>"
+                else f"<div{_doc_item_attrs_str(item, params)}><code>{text}</code></div>"
             )
 
         elif isinstance(item, ListItem):
