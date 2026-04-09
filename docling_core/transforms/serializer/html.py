@@ -330,8 +330,6 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
                 # Set display mode based on context
                 display_mode = "inline" if is_inline_scope else "block"
                 mathml_element = latex2mathml.converter.convert_to_element(text, display=display_mode)
-                annotation = SubElement(mathml_element, "annotation", dict(encoding="TeX"))
-                annotation.text = text
                 mathml = unescape(tostring(mathml_element, encoding="unicode"))
 
                 # Don't wrap in div for inline formulas
