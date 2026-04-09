@@ -370,8 +370,6 @@ class HTMLTextSerializer(BaseModel, BaseTextSerializer):
                 # latex2mathml stores numeric character references as literal element text, which
                 # ElementTree escapes again. Revert only those; any other text must stay escaped.
                 mathml = _DOUBLE_ESCAPED_CHAR_REF.sub(r"&\1", tostring(mathml_element, encoding="unicode"))
-                annotation = f'<annotation encoding="TeX">{escaped_text}</annotation>'
-                mathml = mathml.removesuffix("</math>") + annotation + "</math>"
 
                 # Don't wrap in div for inline formulas
                 if is_inline_scope:
